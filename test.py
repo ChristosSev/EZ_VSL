@@ -6,10 +6,7 @@ import cv2
 import os
 import json
 from torch.optim import *
-import numpy as np
 from sklearn import metrics
-import os
-import csv
 import numpy as np
 from torch.utils.data import Dataset
 from torchvision import transforms
@@ -19,8 +16,6 @@ import random
 import json
 import xml.etree.ElementTree as ET
 import av
-# import torchaudio
-import numpy as np
 from fractions import Fraction
 
 
@@ -340,7 +335,7 @@ def get_train_dataset(args):
     audio_files = {fn.split('.wav')[0] for fn in os.listdir(audio_path) if fn.endswith('.wav')}
     image_files = {fn.split('.jpg')[0] for fn in os.listdir(image_path) if fn.endswith('.jpg')}
     avail_files = audio_files.intersection(image_files)
-    print(f"{len(avail_files)} available files")
+   # print(f"{len(avail_files)} available files")
 
     # Subsample if specified
     if args.trainset.lower() in {'vggss', 'flickr'}:
@@ -348,7 +343,7 @@ def get_train_dataset(args):
     else:
         subset = set(open(f"metadata/{args.trainset}.txt").read().splitlines())
         avail_files = avail_files.intersection(subset)
-        print(f"{len(avail_files)} valid subset files")
+       # print(f"{len(avail_files)} valid subset files")
     avail_files = sorted(list(avail_files))
     audio_files = sorted([dt+'.wav' for dt in avail_files])
     image_files = sorted([dt+'.jpg' for dt in avail_files])
@@ -381,24 +376,22 @@ def get_test_dataset(args):
     image_path = args.test_data_path + 'frames/'
 
 
-    #  Retrieve list of audio and video files
-    testset = {''}
-    print(type(testset))
-
     # Intersect with available files
     audio_files = {fn.split('.wav')[0] for fn in os.listdir(audio_path)}
-    print((audio_files))
+    #print((audio_files))
     image_files = {fn.split('.jpg')[0] for fn in os.listdir(image_path)}
-    print((image_files))
+   # print((image_files))
     avail_files = audio_files.intersection(image_files)
-    print(len(avail_files))
+   # print(len(avail_files))
 
     testset = sorted(list(avail_files))
     image_files = [dt+'.jpg' for dt in testset]
     audio_files = [dt+'.wav' for dt in testset]
-    print(len(testset))
+   # print(len(testset))
 
-  
+    # Bounding boxes
+    #all_bboxes = load_all_bboxes(args.test_gt_path, format=bbox_format)
+
     # Transforms
     image_transform = transforms.Compose([
         transforms.Resize((224, 224), Image.BICUBIC),
@@ -474,10 +467,9 @@ def main(args):
 
     # Model dir
     model_dir = os.path.join(args.model_dir, args.experiment_name)
-    # viz_dir = os.path.join(model_dir, 'vizzz')
-    #
-   
-    viz_dir = '/Users/christos/EZDRUMMER/vizzone/'
+
+    viz_dir = './visualizations/'
+    os.makedirs(viz_dir, exist_ok=True)
 
     # Models
     audio_visual_model = EZVSL(args.tau, args.out_dim)
@@ -492,7 +484,7 @@ def main(args):
     )
 
     if not torch.cuda.is_available():
-        print('using CPU, this will be slow')
+        print('using CPU')
     elif args.multiprocessing_distributed:
         if args.gpu is not None:
             torch.cuda.set_device(args.gpu)
@@ -566,13 +558,15 @@ def validate(testdataloader, audio_visual_model, object_saliency_model, viz_dir,
                 denorm_image = (denorm_image*255).astype(np.uint8)
                 cv2.imwrite(os.path.join(viz_dir, f'{name[i]}_image.jpg'), denorm_image)
 
-                
+                # visualize bboxes on raw images
+                #gt_boxes_img = utils.visualize(denorm_image, bboxes['bboxes'])
+                #cv2.imwrite(os.path.join(viz_dir, f'{name[i]}_gt_boxes.jpg'), gt_boxes_img)
 
                 # visualize heatmaps
                 heatmap_img = np.uint8(pred_av*255)
                 heatmap_img = cv2.applyColorMap(heatmap_img[:, :, np.newaxis], cv2.COLORMAP_JET)
                 fin = cv2.addWeighted(heatmap_img, 0.8, np.uint8(denorm_image), 0.2, 0)
-                print(fin,"fin is ")
+                #print(fin,"fin is ")
                 cv2.imwrite(os.path.join(viz_dir, f'{name[i]}_pred_av.jpg'), fin)
 
                 heatmap_img = np.uint8(pred_obj*255)
@@ -585,7 +579,7 @@ def validate(testdataloader, audio_visual_model, object_saliency_model, viz_dir,
                 fin = cv2.addWeighted(heatmap_img, 0.8, np.uint8(denorm_image), 0.2, 0)
                 cv2.imwrite(os.path.join(viz_dir, f'{name[i]}_pred_av_obj.jpg'), fin)
 
-        print(f'{step+1}/{len(testdataloader)}: map_av={evaluator_av.finalize_AP50():.2f} map_obj={evaluator_obj.finalize_AP50():.2f} map_av_obj={evaluator_av_obj.finalize_AP50():.2f}')
+       # print(f'{step+1}/{len(testdataloader)}: map_av={evaluator_av.finalize_AP50():.2f} map_obj={evaluator_obj.finalize_AP50():.2f} map_av_obj={evaluator_av_obj.finalize_AP50():.2f}')
 
     def compute_stats(eval):
         mAP = eval.finalize_AP50()
@@ -593,9 +587,9 @@ def validate(testdataloader, audio_visual_model, object_saliency_model, viz_dir,
         auc = eval.finalize_AUC()
         return mAP, ciou, auc
 
-    print('AV: AP50(cIoU)={}, Avg-cIoU={}, AUC={}'.format(*compute_stats(evaluator_av)))
-    print('Obj: AP50(cIoU)={}, Avg-cIoU={}, AUC={}'.format(*compute_stats(evaluator_obj)))
-    print('AV_Obj: AP50(cIoU)={}, Avg-cIoU={}, AUC={}'.format(*compute_stats(evaluator_av_obj)))
+    # print('AV: AP50(cIoU)={}, Avg-cIoU={}, AUC={}'.format(*compute_stats(evaluator_av)))
+    # print('Obj: AP50(cIoU)={}, Avg-cIoU={}, AUC={}'.format(*compute_stats(evaluator_obj)))
+    # print('AV_Obj: AP50(cIoU)={}, Avg-cIoU={}, AUC={}'.format(*compute_stats(evaluator_av_obj)))
 
     utils.save_iou(evaluator_av.ciou, 'av', viz_dir)
     utils.save_iou(evaluator_obj.ciou, 'obj', viz_dir)
