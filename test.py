@@ -2,8 +2,6 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from torchvision.models import resnet18
-import cv2
-import os
 import json
 from torch.optim import *
 from sklearn import metrics
@@ -17,6 +15,15 @@ import json
 import xml.etree.ElementTree as ET
 import av
 from fractions import Fraction
+import time
+import os
+from torch.utils.data import DataLoader
+import utils
+import argparse
+import cv2
+tic = time.perf_counter()
+
+
 
 
 class EZVSL(nn.Module):
@@ -200,12 +207,20 @@ def load_audio_av(path=None, container=None, rate=None, start_time=None, duratio
 
     resampler = av.audio.resampler.AudioResampler(format="s16p", layout=layout, rate=rate)
 
+
     # Read data
     chunks = []
+
     container.seek(int(start_time * av.time_base))
+    #print(start_time)
+    #print(av.time_base)
+
     for frame in container.decode(audio=0):
+        #print(frame, "FRAME IS")
         chunk_start_time = frame.pts * frame.time_base
+        #print(chunk_start_time)
         chunk_end_time = chunk_start_time + Fraction(frame.samples, frame.rate)
+        #print(chunk_end_time)
         if chunk_end_time < start_time:   # Skip until start time
             continue
         if chunk_start_time > end_time:       # Exit if clip has been extracted
@@ -213,14 +228,17 @@ def load_audio_av(path=None, container=None, rate=None, start_time=None, duratio
 
         try:
             frame.pts = None
+            # print("ASDASDSADSA")
             if resampler is not None:
                 chunks.append((chunk_start_time, resampler.resample(frame).to_ndarray()))
+                #print(type(resampler.resample(frame)))
             else:
                 chunks.append((chunk_start_time, frame.to_ndarray()))
         except AttributeError:
             break
 
     # Trim for frame accuracy
+    #print(chunks)
     audio = np.concatenate([af[1] for af in chunks], 1)
     ss = int((start_time - chunks[0][0]) * rate)
     t = int(duration * rate)
@@ -421,16 +439,6 @@ def inverse_normalize(tensor):
     return tensor
 
 
-import os
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data import DataLoader
-import utils
-import numpy as np
-import argparse
-import cv2
-
 
 def get_arguments():
     parser = argparse.ArgumentParser()
@@ -506,7 +514,6 @@ def main(args):
     #testdataset - get_test_dataset(args)
     testdataset = get_test_dataset(args)
     testdataloader = DataLoader(testdataset, batch_size=args.batch_size, shuffle=False, num_workers=args.workers)
-    print(len(testdataloader))
     print("Loaded dataloader.")
 
     validate(testdataloader, audio_visual_model, object_saliency_model, viz_dir, args)
@@ -565,19 +572,42 @@ def validate(testdataloader, audio_visual_model, object_saliency_model, viz_dir,
                 # visualize heatmaps
                 heatmap_img = np.uint8(pred_av*255)
                 heatmap_img = cv2.applyColorMap(heatmap_img[:, :, np.newaxis], cv2.COLORMAP_JET)
-                fin = cv2.addWeighted(heatmap_img, 0.8, np.uint8(denorm_image), 0.2, 0)
+                fin_pred_av = cv2.addWeighted(heatmap_img, 0.8, np.uint8(denorm_image), 0.2, 0)
                 #print(fin,"fin is ")
-                cv2.imwrite(os.path.join(viz_dir, f'{name[i]}_pred_av.jpg'), fin)
+                #cv2.imwrite(os.path.join(viz_dir, f'{name[i]}_pred_av.jpg'), fin_pred_av)
+                # cv2.imshow('image', fin_pred_av)
+                # cv2.waitKey()
+
 
                 heatmap_img = np.uint8(pred_obj*255)
                 heatmap_img = cv2.applyColorMap(heatmap_img[:, :, np.newaxis], cv2.COLORMAP_JET)
-                fin = cv2.addWeighted(heatmap_img, 0.8, np.uint8(denorm_image), 0.2, 0)
-                cv2.imwrite(os.path.join(viz_dir, f'{name[i]}_pred_obj.jpg'), fin)
+                pred_obj= cv2.addWeighted(heatmap_img, 0.8, np.uint8(denorm_image), 0.2, 0)
+                #cv2.imwrite(os.path.join(viz_dir, f'{name[i]}_pred_obj.jpg'), pred_obj)
+
+
+
 
                 heatmap_img = np.uint8(pred_av_obj*255)
                 heatmap_img = cv2.applyColorMap(heatmap_img[:, :, np.newaxis], cv2.COLORMAP_JET)
-                fin = cv2.addWeighted(heatmap_img, 0.8, np.uint8(denorm_image), 0.2, 0)
-                cv2.imwrite(os.path.join(viz_dir, f'{name[i]}_pred_av_obj.jpg'), fin)
+                pred_av_obj = cv2.addWeighted(heatmap_img, 0.8, np.uint8(denorm_image), 0.2, 0)
+               # cv2.imwrite(os.path.join(viz_dir, f'{name[i]}_pred_av_obj.jpg'), pred_av_obj)
+
+
+                numpy_horizontal_concat = np.concatenate((pred_obj, denorm_image), axis=1)  #### pred_obj , image
+                numpy_horizontal_concat_2 = np.concatenate((pred_av_obj, fin_pred_av), axis=1)
+
+                numpy_vertic_concat = np.concatenate((numpy_horizontal_concat, numpy_horizontal_concat_2), axis=0)
+
+
+                ezvsl_default = np.concatenate((pred_av_obj, denorm_image), axis=1)  #### pred_obj , image
+
+                cv2.imwrite(os.path.join(viz_dir, f'{name[i]}_ezvsl_default.jpg'),  ezvsl_default)
+
+                cv2.imshow('Predicted heatmaps', ezvsl_default)
+                cv2.waitKey()
+                cv2.destroyAllWindows()
+
+
 
        # print(f'{step+1}/{len(testdataloader)}: map_av={evaluator_av.finalize_AP50():.2f} map_obj={evaluator_obj.finalize_AP50():.2f} map_av_obj={evaluator_av_obj.finalize_AP50():.2f}')
 
@@ -617,4 +647,6 @@ class Unsqueeze(nn.Module):
 if __name__ == "__main__":
     main(get_arguments())
 
+toc = time.perf_counter()
+print(f"total time to run the script in {toc - tic:0.4f} seconds")
 
