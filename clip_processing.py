@@ -6,6 +6,11 @@ from glob import glob
 import pathlib
 from pathlib import Path
 import math
+import time
+
+
+tic = time.perf_counter()
+
 
 stem_list = []
 
@@ -81,10 +86,12 @@ def extract_frames_and_audio(path):
 
 
 
-clips = glob(path + '*mp4') + glob(path + '*avi')
+clips = glob(path + '*mp4') + glob(path + '*avi') + glob(path + '*MP4')
 for c in clips:
     extract_frames_and_audio(c)
 
+toc = time.perf_counter()
+print(f"total time to run the script in {toc - tic:0.4f} seconds")
 # for i in stem_list:
 
 
